@@ -252,9 +252,16 @@ def get_extensions():
         hip_glm = osp.join(str(current_dir), "gsplat", "hip", "csrc", "third_party", "glm")
         cuda_glm = osp.join(str(current_dir), "gsplat", "cuda", "csrc", "third_party", "glm")
         if osp.isdir(hip_glm) and not osp.islink(hip_glm):
-            shutil.rmtree(hip_glm)
-            rel = os.path.relpath(cuda_glm, os.path.dirname(hip_glm))
-            os.symlink(rel, hip_glm)
+            try:
+                shutil.rmtree(hip_glm)
+                rel = os.path.relpath(cuda_glm, os.path.dirname(hip_glm))
+                os.symlink(rel, hip_glm)
+            except OSError as e:
+                raise RuntimeError(
+                    f"Failed to replace hipified GLM directory with symlink to "
+                    f"{cuda_glm}. Ensure you have write permission to "
+                    f"{osp.dirname(hip_glm)}. Original error: {e}"
+                ) from e
 
         return [extension]
     else:
