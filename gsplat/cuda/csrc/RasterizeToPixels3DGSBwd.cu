@@ -18,6 +18,10 @@ namespace cg = cooperative_groups;
 
 //compiler issue with mov_dpp intrinsic seen in Rocm 6.4.1, so mov_dpp intrinsic is temporarily commented out and replaced with rocprim which also uses dpp when in single wave
 #if USE_ROCM
+// The dpp_* helpers and the bs64 kernel assume a single wave covers the entire
+// 8x8 tile (64 threads).  This is only valid on wave64 hardware (CDNA/GCN).
+// On wave32 (RDNA3) the regular rasterize_to_pixels_3dgs_bwd_kernel is used.
+#if GSPLAT_WAVE_SIZE == 64
 template <typename T>
 __device__ void dpp_sclr_warpSum(T &val) {
 	// T tmp = val + __builtin_amdgcn_mov_dpp(val, 0x118, 0xf, 0xf, 1); //ROW_SHR8
@@ -27,7 +31,7 @@ __device__ void dpp_sclr_warpSum(T &val) {
 	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x142, 0xf, 0xf, 1); //BCAST15
 	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x143, 0xf, 0xf, 1); //BCAST31
 	// val = __shfl(tmp, 63);
-    rocprim_warpSum<32>(val, NULL);
+    rocprim_warpSum<GSPLAT_WAVE_SIZE>(val, NULL);
 }
 
 // This version does reduce but stores the result to a specific location (n_val) on a given lane (ln)
@@ -44,7 +48,7 @@ __device__ void dpp_sprd_warpSum(T &val, int ln, T &n_val) {
 	// if (cg::this_thread_block().thread_rank() == ln)
 	//        n_val = tmp;
     T tmp = val;
-    rocprim_warpSum<32>(tmp, NULL);
+    rocprim_warpSum<GSPLAT_WAVE_SIZE>(tmp, NULL);
     if (cg::this_thread_block().thread_rank() == ln)
         n_val = tmp;
 }
@@ -54,7 +58,7 @@ template <uint32_t numel, typename T>
 __device__ void dpp_vec_warpSum(T &val) {
           #pragma unroll
           for (int e=0; e<numel; e++)
-            dpp_sprd_warpSum(val[e], e%64, val[e/64]);
+            dpp_sprd_warpSum(val[e], e%GSPLAT_WAVE_SIZE, val[e/GSPLAT_WAVE_SIZE]);
 }
 
 template <typename T>
@@ -82,8 +86,8 @@ __device__ T dpp_warpMax(T &val) {
 	// tmp = max(tmp, __builtin_amdgcn_mov_dpp(tmp, 0x142, 0xf, 0xf, 1)); //BCAST15
 	// tmp = max(tmp, __builtin_amdgcn_mov_dpp(tmp, 0x143, 0xf, 0xf, 1)); //BCAST31
 	// return __shfl(tmp, 63);
-    __shared__ typename rocprim::warp_reduce<int32_t, 32>::storage_type warp_storage;
-    rocprim::warp_reduce<int32_t, 32> wreduce;
+    __shared__ typename rocprim::warp_reduce<int32_t, GSPLAT_WAVE_SIZE>::storage_type warp_storage;
+    rocprim::warp_reduce<int32_t, GSPLAT_WAVE_SIZE> wreduce;
     int32_t max;
     wreduce.reduce(val,            // 1) value held by this lane
             max,               // 2) reference that will receive the result

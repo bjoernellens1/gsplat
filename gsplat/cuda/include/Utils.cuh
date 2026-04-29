@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Common.h"
+#include "WaveConfig.h"
 #ifndef USE_ROCM 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
@@ -156,8 +157,9 @@ inline __device__ int get_leader_lane_id(unsigned long long mask) {
 // or for specific performance tuning, though `labeled_partition` is generally efficient.
 
 inline __device__ int32_t reduce_max_shuffle(int32_t val) {
-    // On ROCm/RDNA3 (wave32) the active mask is 32-bit; use a 32-bit full mask.
-    constexpr unsigned long long mask = 0xFFFFFFFFULL;
+    // Use the compile-time full-warp mask so this works for both wave32
+    // (RDNA3/gfx1100) and wave64 (CDNA/GCN) targets.
+    constexpr unsigned long long mask = GSPLAT_FULL_WARP_MASK;
 
     #pragma unroll
     for (int offset = warpSize / 2; offset > 0; offset /= 2) {
@@ -234,7 +236,7 @@ inline __device__ void manual_warpSum(float val[N]) {
     }  
 }
 
-template<int LOGICAL_WARP_SIZE = 32>
+template<int LOGICAL_WARP_SIZE = GSPLAT_WAVE_SIZE>
 __device__ inline void rocprim_warpSum_scalar(float& val, typename rocprim::warp_reduce<float,LOGICAL_WARP_SIZE>::storage_type*
             warp_storage_base)
 {
@@ -257,7 +259,7 @@ __device__ inline void rocprim_warpSum_scalar(float& val, typename rocprim::warp
 
 //-----------------------------------------------------------------------------
 //  1. float overload  ────────────────────────────────────────────────────────
-template<int LOGICAL_WARP_SIZE = 32>
+template<int LOGICAL_WARP_SIZE = GSPLAT_WAVE_SIZE>
 __device__ inline void rocprim_warpSum(float& x, typename rocprim::warp_reduce<float,LOGICAL_WARP_SIZE>::storage_type*
                     warp_storage_base)
 {
@@ -266,7 +268,7 @@ __device__ inline void rocprim_warpSum(float& x, typename rocprim::warp_reduce<f
 
 //-----------------------------------------------------------------------------
 //  2. vec2 / vec3 / vec4 overloads  ─────────────────────────────────────────-
-template<int LOGICAL_WARP_SIZE = 32>
+template<int LOGICAL_WARP_SIZE = GSPLAT_WAVE_SIZE>
 __device__ inline void rocprim_warpSum(vec2& v, typename rocprim::warp_reduce<float,LOGICAL_WARP_SIZE>::storage_type*
                     warp_storage_base)
 {
@@ -274,7 +276,7 @@ __device__ inline void rocprim_warpSum(vec2& v, typename rocprim::warp_reduce<fl
     rocprim_warpSum_scalar<LOGICAL_WARP_SIZE>(v.y, warp_storage_base);
 }
 
-template<int LOGICAL_WARP_SIZE = 32>
+template<int LOGICAL_WARP_SIZE = GSPLAT_WAVE_SIZE>
 __device__ inline void rocprim_warpSum(vec3& v, typename rocprim::warp_reduce<float,LOGICAL_WARP_SIZE>::storage_type*
                     warp_storage_base)
 {
@@ -283,7 +285,7 @@ __device__ inline void rocprim_warpSum(vec3& v, typename rocprim::warp_reduce<fl
     rocprim_warpSum_scalar<LOGICAL_WARP_SIZE>(v.z, warp_storage_base);
 }
 
-template<int LOGICAL_WARP_SIZE = 32>
+template<int LOGICAL_WARP_SIZE = GSPLAT_WAVE_SIZE>
 __device__ inline void rocprim_warpSum(vec4& v, typename rocprim::warp_reduce<float,LOGICAL_WARP_SIZE>::storage_type*
                     warp_storage_base)
 {
@@ -295,7 +297,7 @@ __device__ inline void rocprim_warpSum(vec4& v, typename rocprim::warp_reduce<fl
 
 //-----------------------------------------------------------------------------
 //  3. fixed-size float array overload  ───────────────────────────────────────
-template<int N, int LOGICAL_WARP_SIZE = 32>
+template<int N, int LOGICAL_WARP_SIZE = GSPLAT_WAVE_SIZE>
 __device__ inline void rocprim_warpSum(float (&a)[N], typename rocprim::warp_reduce<float,LOGICAL_WARP_SIZE>::storage_type*
                     warp_storage_base)
 {
