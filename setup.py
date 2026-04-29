@@ -3,6 +3,7 @@ import os
 import os.path as osp
 import pathlib
 import platform
+import shutil
 import sys
 import re
 
@@ -223,8 +224,10 @@ def get_extensions():
 	# Its still nvcc flags that are used for HIP compilation
         extra_compile_args["nvcc"] = hipcc_flags
         current_dir = pathlib.Path(__file__).parent.resolve()
+        glm_path = osp.join(current_dir, "gsplat", "cuda", "csrc", "third_party", "glm")
 
         include_dirs = [
+            glm_path,
             osp.join(current_dir, "gsplat", "cuda", "include"),
             f"{os.environ['HOME']}/.local/include",
             f"/opt/conda/include",
@@ -242,6 +245,17 @@ def get_extensions():
             extra_compile_args=extra_compile_args,
             extra_link_args=extra_link_args
         )
+
+        # Replace the hipified GLM directory (which lacks .inl files and has corrupted
+        # headers) with a symlink to the original CUDA-side GLM tree so that HIP/clang
+        # can compile GLM headers as-is.
+        hip_glm = osp.join(str(current_dir), "gsplat", "hip", "csrc", "third_party", "glm")
+        cuda_glm = osp.join(str(current_dir), "gsplat", "cuda", "csrc", "third_party", "glm")
+        if osp.isdir(hip_glm) and not osp.islink(hip_glm):
+            shutil.rmtree(hip_glm)
+            rel = os.path.relpath(cuda_glm, os.path.dirname(hip_glm))
+            os.symlink(rel, hip_glm)
+
         return [extension]
     else:
 
