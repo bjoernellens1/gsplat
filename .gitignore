@@ -123,5 +123,6 @@ compile_commands.json
 
 data
 results
+gsplat/hip/
 
 !examples/benchmarks/compression/results/gsplat/hip/

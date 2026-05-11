@@ -31,6 +31,14 @@ RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
       CUDA_HOME=/opt/rocm MAX_JOBS=${MAX_JOBS} python -m pip install --no-cache-dir --no-build-isolation .; \
     else \
       BUILD_NO_CUDA=1 python -m pip install --no-cache-dir --no-build-isolation .; \
+    fi && \
+    if [ "${BUILD_WITH_HIP}" = "1" ]; then \
+      pip install --no-cache-dir \
+        "pycolmap>=3.0,<4.0" tyro imageio viser nerfview \
+        tensorboard torchmetrics "imageio[ffmpeg]" \
+        tqdm opencv-python "scipy<1.14" plyfile \
+        scikit-learn splines && \
+      python3 -c "from gsplat.cuda._backend import _C; print('HIP extension compiled, _C:', _C)"; \
     fi
 
 CMD ["bash"]

@@ -7,7 +7,72 @@ import imageio.v2 as imageio
 import numpy as np
 import torch
 from PIL import Image
-from pycolmap import SceneManager
+try:
+    from pycolmap import SceneManager
+except ImportError:
+    # pycolmap >= 3.0 removed SceneManager; use Reconstruction directly
+    import pycolmap
+    import numpy as np
+    class SceneManager:
+        def __init__(self, colmap_dir):
+            self._recon = pycolmap.Reconstruction(colmap_dir)
+        def load_cameras(self):
+            pass
+        def load_images(self):
+            pass
+        def load_points3D(self):
+            pass
+        @property
+        def images(self):
+            # Wrap images to expose old .R() and .tvec API
+            class _ImageWrapper:
+                def __init__(self, image):
+                    self._image = image
+                    self.id = image.image_id
+                def R(self):
+                    return self._image.cam_from_world().rotation.matrix()
+                @property
+                def tvec(self):
+                    return self._image.cam_from_world().translation
+                @property
+                def camera_id(self):
+                    return self._image.camera_id
+                @property
+                def name(self):
+                    return self._image.name
+                @property
+                def point3D_ids(self):
+                    return list(self._image.point2D_to_point3D_ids())
+            return {k: _ImageWrapper(v) for k, v in self._recon.images.items()}
+        @property
+        def cameras(self):
+            # Wrap cameras to expose old .fx, .fy, .cx, .cy API
+            class _CameraWrapper:
+                def __init__(self, cam):
+                    self._cam = cam
+                    self.id = cam.camera_id
+                @property
+                def fx(self):
+                    return self._cam.focal_length_x
+                @property
+                def fy(self):
+                    return self._cam.focal_length_y
+                @property
+                def cx(self):
+                    return self._cam.principal_point_x
+                @property
+                def cy(self):
+                    return self._cam.principal_point_y
+                @property
+                def width(self):
+                    return self._cam.width
+                @property
+                def height(self):
+                    return self._cam.height
+            return {k: _CameraWrapper(v) for k, v in self._recon.cameras.items()}
+        @property
+        def points3D(self):
+            return self._recon.points3D
 from tqdm import tqdm
 from typing_extensions import assert_never
 
