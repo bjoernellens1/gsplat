@@ -4,7 +4,8 @@ FROM ${BASE_IMAGE}
 # Targets RDNA3 and Strix Halo while remaining explicit for hipcc.
 ENV HSA_XNACK=1 \
     HSA_ENABLE_SDMA=0 \
-    PYTORCH_ROCM_ARCH=gfx1100,gfx1151
+    PYTORCH_ROCM_ARCH=gfx1100,gfx1151 \
+    CUDA_HOME=/opt/rocm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -24,9 +25,10 @@ RUN git submodule update --init --recursive && \
 
 # BUILD_WITH_HIP=0 keeps CI smoke lightweight; set BUILD_WITH_HIP=1 on ROCm hosts.
 ARG BUILD_WITH_HIP=0
+ARG MAX_JOBS=4
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     if [ "${BUILD_WITH_HIP}" = "1" ]; then \
-      MAX_JOBS=4 python -m pip install --no-cache-dir --no-build-isolation .; \
+      CUDA_HOME=/opt/rocm MAX_JOBS=${MAX_JOBS} python -m pip install --no-cache-dir --no-build-isolation .; \
     else \
       BUILD_NO_CUDA=1 python -m pip install --no-cache-dir --no-build-isolation .; \
     fi

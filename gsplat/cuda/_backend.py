@@ -123,23 +123,29 @@ def load_extension(
 def cuda_toolkit_available():
     """
     Check more robustly if the CUDA toolkit is available.
-    1. Attempt to locate `CUDA_HOME` using PyTorch’s internal method.
-    2. Check if nvcc is present in that location.
+    1. Attempt to locate `CUDA_HOME` using PyTorch's internal method.
+    2. Check if nvcc or hipcc is present in that location.
     """
     cuda_home = _find_cuda_home()  # This tries various heuristics
     if not cuda_home:
         return False
 
-    # If we have a cuda_home, check if nvcc exists there:
+    # If we have a cuda_home, check if nvcc exists there (CUDA):
     nvcc_path = os.path.join(cuda_home, "bin", "nvcc")
-    if not os.path.isfile(nvcc_path):
-        # Maybe still on PATH, try calling "nvcc" directly:
-        try:
-            call(["nvcc"], stdout=DEVNULL, stderr=DEVNULL)
-            return True
-        except FileNotFoundError:
-            return False
-    return True
+    if os.path.isfile(nvcc_path):
+        return True
+
+    # Check for hipcc (ROCm): both at CUDA_HOME and on PATH
+    hipcc_path = os.path.join(cuda_home, "bin", "hipcc")
+    if os.path.isfile(hipcc_path):
+        return True
+    try:
+        call(["hipcc"], stdout=DEVNULL, stderr=DEVNULL)
+        return True
+    except FileNotFoundError:
+        pass
+
+    return False
 
 
 def cuda_toolkit_version():
