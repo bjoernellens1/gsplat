@@ -148,6 +148,30 @@ def cuda_toolkit_available():
     return False
 
 
+def _get_rocm_arches():
+    """Detect ROCm GPU architectures for JIT fallback.
+
+    Mirrors get_rocm_arches() in setup.py.
+    """
+    import re
+    import subprocess
+
+    env_arch = os.environ.get("PYTORCH_ROCM_ARCH", "").strip()
+    if env_arch:
+        arches = [a.strip() for a in env_arch.replace(";", ",").split(",") if a.strip()]
+        if arches:
+            return arches
+    try:
+        result = subprocess.run(["rocminfo"], capture_output=True, text=True, check=True)
+        matches = re.findall(r"\b(gfx[0-9a-z]+)(?!-)\b", result.stdout)
+        if matches:
+            return list(dict.fromkeys(matches))
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        pass
+    Console().print("[yellow]gsplat: Could not detect ROCm GPU architecture, defaulting to gfx942.[/yellow]")
+    return ["gfx942"]
+
+
 def cuda_toolkit_version():
     """Get the CUDA toolkit version if we found CUDA home."""
     cuda_home = _find_cuda_home()
@@ -182,8 +206,25 @@ except ImportError:
         opt_level = "-O0" if FAST_COMPILE else "-O3"
         extra_cflags = [opt_level, "-Wno-attributes"]
         extra_cuda_cflags = [opt_level]
-        if not NO_FAST_MATH:
-            extra_cuda_cflags += ["-use_fast_math"]
+
+        is_rocm = getattr(torch.version, "hip", None) is not None
+        if is_rocm:
+            # ROCm JIT fallback: add HIP defines and offload arch flags.
+            # This mirrors the setup.py build, ensuring JIT-compiled kernels
+            # target the same GPU architectures as setup.py would.
+            extra_cflags += [
+                "-D__HIP_PLATFORM_AMD__",
+                "-DC10_CUDA_NO_CMAKE_CONFIGURE_FILE",
+                "-DUSE_ROCM",
+            ]
+            rocm_arches = _get_rocm_arches()
+            extra_cuda_cflags += [f"--offload-arch={arch}" for arch in rocm_arches]
+            Console().print(
+                f"[cyan]gsplat: ROCm JIT compilation targeting arches: {','.join(rocm_arches)}[/cyan]"
+            )
+        else:
+            if not NO_FAST_MATH:
+                extra_cuda_cflags += ["-use_fast_math"]
         sources = (
             list(glob.glob(os.path.join(PATH, "csrc/*.cu")))
             + list(glob.glob(os.path.join(PATH, "csrc/*.cpp")))
