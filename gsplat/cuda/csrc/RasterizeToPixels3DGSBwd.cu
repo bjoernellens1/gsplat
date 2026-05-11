@@ -18,35 +18,20 @@ namespace cg = cooperative_groups;
 
 //compiler issue with mov_dpp intrinsic seen in Rocm 6.4.1, so mov_dpp intrinsic is temporarily commented out and replaced with rocprim which also uses dpp when in single wave
 #if USE_ROCM
-// Shared storage for warp-reduction helpers used in the backward kernel.
-// Sized for a full tile of 16×16 = 256 threads (256/32 = 8 warps on wave32).
+// Shared warp storage for dpp reduction helpers.
+// Sized for max block_size = 16×16 = 256 threads, 256/32 = 8 warps on wave32.
+// Declared once at file scope so all kernels in this TU can use it.
 __shared__ typename rocprim::warp_reduce<float, 32>::storage_type dpp_warp_storage[8];
 
 template <typename T>
 __device__ void dpp_sclr_warpSum(T &val) {
-	// T tmp = val + __builtin_amdgcn_mov_dpp(val, 0x118, 0xf, 0xf, 1); //ROW_SHR8
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x114, 0xf, 0xf, 1); //ROW_SHR4
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x112, 0xf, 0xf, 1); //ROW_SHR2
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x111, 0xf, 0xf, 1); //ROW_SHR1
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x142, 0xf, 0xf, 1); //BCAST15
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x143, 0xf, 0xf, 1); //BCAST31
-	// val = __shfl(tmp, 63);
     rocprim_warpSum<32>(val, dpp_warp_storage);
 }
 
 // This version does reduce but stores the result to a specific location (n_val) on a given lane (ln)
-// It can be sued to generate results than can be stored wave-coalesed.
+// It can be used to generate results that can be stored wave-coalesed.
 template <typename T>
 __device__ void dpp_sprd_warpSum(T &val, int ln, T &n_val) {
-	// T tmp = val + __builtin_amdgcn_mov_dpp(val, 0x118, 0xf, 0xf, 1); //ROW_SHR8
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x114, 0xf, 0xf, 1); //ROW_SHR4
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x112, 0xf, 0xf, 1); //ROW_SHR2
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x111, 0xf, 0xf, 1); //ROW_SHR1
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x142, 0xf, 0xf, 1); //BCAST15
-	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x143, 0xf, 0xf, 1); //BCAST31
-	// tmp = __shfl(tmp, 63);
-	// if (cg::this_thread_block().thread_rank() == ln)
-	//        n_val = tmp;
     T tmp = val;
     rocprim_warpSum<32>(tmp, dpp_warp_storage);
     if (cg::this_thread_block().thread_rank() == ln)
@@ -347,9 +332,9 @@ __global__ void rasterize_bs64_to_pixels_3dgs_bwd_kernel(
 
             float *v_rgb_ptr = (float *)(v_colors) + CDIM * g;
 #pragma unroll
-            for (uint32_t k = 0; k < CDIM; k+=64) {
+            for (uint32_t k = 0; k < CDIM; k+=warpSize) {
 		if (k + warp.thread_rank() < CDIM)
-                    atomicAdd(v_rgb_ptr + k + warp.thread_rank(), v_rgb_local[k/64]);
+                    atomicAdd(v_rgb_ptr + k + warp.thread_rank(), v_rgb_local[k/warpSize]);
             }
 
             if (warp.thread_rank() == 0) {
