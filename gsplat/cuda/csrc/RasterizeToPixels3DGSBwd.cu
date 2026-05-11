@@ -59,18 +59,6 @@ __device__ void dpp_warpSum(T &val, dpp_warp_storage_type* storage) {
           dpp_sclr_warpSum(val, storage);
 }
 
-template <typename T>
-__device__ int32_t dpp_warpMax(T &val) {
-    __shared__ typename rocprim::warp_reduce<int32_t, 32>::storage_type warp_storage;
-    rocprim::warp_reduce<int32_t, 32> wreduce;
-    int32_t max_val;
-    wreduce.reduce(static_cast<int32_t>(val),
-            max_val,
-            warp_storage,
-            rocprim::maximum<int32_t>());
-    return max_val;
-}
-
 template <uint32_t CDIM, typename scalar_t>
 __launch_bounds__(64)
 __global__ void rasterize_bs64_to_pixels_3dgs_bwd_kernel(
@@ -488,13 +476,7 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
     #endif
     
     #if USE_ROCM
-        __shared__ typename rocprim::warp_reduce<int32_t, 32>::storage_type warp_storage;
-        rocprim::warp_reduce<int32_t, 32> wreduce;
-        int32_t warp_bin_final;
-        wreduce.reduce( bin_final,            // 1) value held by this lane
-                warp_bin_final,               // 2) reference that will receive the result
-                warp_storage,                 // 3) shared-memory storage
-                rocprim::maximum<int32_t>()); // 4) binary operator
+    const int32_t warp_bin_final = reduce_max_shuffle(bin_final);
     #else
     const int32_t warp_bin_final =
         cg::reduce(warp, bin_final, cg::greater<int>());
