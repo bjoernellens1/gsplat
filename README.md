@@ -74,7 +74,7 @@ To use GSplat, you need the following prerequisites:
    Home-page: https://github.com/rocm/gsplat
    Author: AMD Corporation
    License: Apache 2.0
-   Location: /opt/conda/envs/py_3.12/lib/python3.12/site-packages
+    Location: /opt/conda/envs/py_3.12/lib/python3.12/site-packages
     Requires: jaxtyping, ninja, numpy, rich, torch
 
 

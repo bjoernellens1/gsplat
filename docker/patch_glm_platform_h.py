@@ -11,7 +11,6 @@ that even after hipification the HIP compiler path is correctly selected.
 """
 
 import os.path as osp
-import re
 
 GLM_PLATFORM_H = osp.join(
     osp.dirname(__file__),
@@ -31,99 +30,54 @@ def patch_platform_h(path: str) -> bool:
     with open(path, "r") as f:
         content = f.read()
 
-    # Match the CUDA block followed by the HIP block
-    # We swap them so HIP is checked first.
-    cu_block = r"""(// CUDA
-#elif defined\(__CUDACC__\))
-#\tif !defined\(CUDA_VERSION\) && !defined\(GLM_FORCE_CUDA\)
-#\t\tinclude <cuda\.h>  // make sure version is defined since nvcc does not define it itself!
-#\tendif
-#\tif defined\(__CUDACC_RTC__\)
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA_RTC
-#\telif CUDA_VERSION >= 8000
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA80
-#\telif CUDA_VERSION >= 7500
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA75
-#\telif CUDA_VERSION >= 7000
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA70
-#\telif CUDA_VERSION < 7000
-#\t\terror "GLM requires CUDA 7\.0 or higher"
-#\tendif
+    # Match the full original order: CUDA block then HIP block, and swap them.
+    old = (
+        "// CUDA\n"
+        "#elif defined(__CUDACC__)\n"
+        "#\tif !defined(CUDA_VERSION) && !defined(GLM_FORCE_CUDA)\n"
+        "#\t\tinclude <cuda.h>  "
+        "// make sure version is defined since nvcc does not define it itself!\n"
+        "#\tendif\n"
+        "#\tif defined(__CUDACC_RTC__)\n"
+        "#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA_RTC\n"
+        "#\telif CUDA_VERSION >= 8000\n"
+        "#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA80\n"
+        "#\telif CUDA_VERSION >= 7500\n"
+        "#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA75\n"
+        "#\telif CUDA_VERSION >= 7000\n"
+        "#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA70\n"
+        "#\telif CUDA_VERSION < 7000\n"
+        "#\t\terror \"GLM requires CUDA 7.0 or higher\"\n"
+        "#\tendif\n"
+        "\n"
+        "// HIP\n"
+        "#elif defined(__HIP__)\n"
+        "#\tdefine GLM_COMPILER GLM_COMPILER_HIP"
+    )
 
-// HIP
-#elif defined\(__HIP__\)
-#\tdefine GLM_COMPILER GLM_COMPILER_HIP"""
-
-    hip_block = """// HIP
-#elif defined(__HIP__)
-#\tdefine GLM_COMPILER GLM_COMPILER_HIP"""
-
-    cu_block_only = """// CUDA
-#elif defined(__CUDACC__)
-#\tif !defined(CUDA_VERSION) && !defined(GLM_FORCE_CUDA)
-#\t\tinclude <cuda.h>  // make sure version is defined since nvcc does not define it itself!
-#\tendif
-#\tif defined(__CUDACC_RTC__)
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA_RTC
-#\telif CUDA_VERSION >= 8000
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA80
-#\telif CUDA_VERSION >= 7500
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA75
-#\telif CUDA_VERSION >= 7000
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA70
-#\telif CUDA_VERSION < 7000
-#\t\terror "GLM requires CUDA 7.0 or higher"
-#\tendif"""
-
-    # Build the replacement: HIP block first, then CUDA
-    new_hip_block = hip_block.replace("#\t", "\t")
-    new_cu_block = cu_block_only.replace("#\t", "\t")
-
-    replacement = f"{new_hip_block}\n\n{new_cu_block}"
-
-    # Match the full original order: CUDA then HIP
-    # We use a simpler approach: find the exact text and replace
-    old = f"""// CUDA
-#elif defined(__CUDACC__)
-#\tif !defined(CUDA_VERSION) && !defined(GLM_FORCE_CUDA)
-#\t\tinclude <cuda.h>  // make sure version is defined since nvcc does not define it itself!
-#\tendif
-#\tif defined(__CUDACC_RTC__)
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA_RTC
-#\telif CUDA_VERSION >= 8000
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA80
-#\telif CUDA_VERSION >= 7500
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA75
-#\telif CUDA_VERSION >= 7000
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA70
-#\telif CUDA_VERSION < 7000
-#\t\terror "GLM requires CUDA 7.0 or higher"
-#\tendif
-
-// HIP
-#elif defined(__HIP__)
-#\tdefine GLM_COMPILER GLM_COMPILER_HIP"""
-
-    new = f"""// HIP
-#elif defined(__HIP__)
-#\tdefine GLM_COMPILER GLM_COMPILER_HIP
-
-// CUDA
-#elif defined(__CUDACC__)
-#\tif !defined(CUDA_VERSION) && !defined(GLM_FORCE_CUDA)
-#\t\tinclude <cuda.h>  // make sure version is defined since nvcc does not define it itself!
-#\tendif
-#\tif defined(__CUDACC_RTC__)
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA_RTC
-#\telif CUDA_VERSION >= 8000
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA80
-#\telif CUDA_VERSION >= 7500
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA75
-#\telif CUDA_VERSION >= 7000
-#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA70
-#\telif CUDA_VERSION < 7000
-#\t\terror "GLM requires CUDA 7.0 or higher"
-#\tendif"""
+    new = (
+        "// HIP\n"
+        "#elif defined(__HIP__)\n"
+        "#\tdefine GLM_COMPILER GLM_COMPILER_HIP\n"
+        "\n"
+        "// CUDA\n"
+        "#elif defined(__CUDACC__)\n"
+        "#\tif !defined(CUDA_VERSION) && !defined(GLM_FORCE_CUDA)\n"
+        "#\t\tinclude <cuda.h>  "
+        "// make sure version is defined since nvcc does not define it itself!\n"
+        "#\tendif\n"
+        "#\tif defined(__CUDACC_RTC__)\n"
+        "#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA_RTC\n"
+        "#\telif CUDA_VERSION >= 8000\n"
+        "#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA80\n"
+        "#\telif CUDA_VERSION >= 7500\n"
+        "#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA75\n"
+        "#\telif CUDA_VERSION >= 7000\n"
+        "#\t\tdefine GLM_COMPILER GLM_COMPILER_CUDA70\n"
+        "#\telif CUDA_VERSION < 7000\n"
+        "#\t\terror \"GLM requires CUDA 7.0 or higher\"\n"
+        "#\tendif"
+    )
 
     if old in content:
         content = content.replace(old, new)

@@ -18,6 +18,10 @@ namespace cg = cooperative_groups;
 
 //compiler issue with mov_dpp intrinsic seen in Rocm 6.4.1, so mov_dpp intrinsic is temporarily commented out and replaced with rocprim which also uses dpp when in single wave
 #if USE_ROCM
+// Shared storage for warp-reduction helpers used in the backward kernel.
+// Sized for a full tile of 16×16 = 256 threads (256/32 = 8 warps on wave32).
+__shared__ typename rocprim::warp_reduce<float, 32>::storage_type dpp_warp_storage[8];
+
 template <typename T>
 __device__ void dpp_sclr_warpSum(T &val) {
 	// T tmp = val + __builtin_amdgcn_mov_dpp(val, 0x118, 0xf, 0xf, 1); //ROW_SHR8
@@ -27,7 +31,7 @@ __device__ void dpp_sclr_warpSum(T &val) {
 	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x142, 0xf, 0xf, 1); //BCAST15
 	// tmp = tmp + __builtin_amdgcn_mov_dpp(tmp, 0x143, 0xf, 0xf, 1); //BCAST31
 	// val = __shfl(tmp, 63);
-    rocprim_warpSum<32>(val, NULL);
+    rocprim_warpSum<32>(val, dpp_warp_storage);
 }
 
 // This version does reduce but stores the result to a specific location (n_val) on a given lane (ln)
@@ -44,7 +48,7 @@ __device__ void dpp_sprd_warpSum(T &val, int ln, T &n_val) {
 	// if (cg::this_thread_block().thread_rank() == ln)
 	//        n_val = tmp;
     T tmp = val;
-    rocprim_warpSum<32>(tmp, NULL);
+    rocprim_warpSum<32>(tmp, dpp_warp_storage);
     if (cg::this_thread_block().thread_rank() == ln)
         n_val = tmp;
 }
@@ -54,7 +58,7 @@ template <uint32_t numel, typename T>
 __device__ void dpp_vec_warpSum(T &val) {
           #pragma unroll
           for (int e=0; e<numel; e++)
-            dpp_sprd_warpSum(val[e], e%64, val[e/64]);
+            dpp_sprd_warpSum(val[e], e % warpSize, val[e / warpSize]);
 }
 
 template <typename T>
