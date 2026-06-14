@@ -180,3 +180,13 @@ If you use this library in your research, please cite:
   year={2025}
 }
 ```
+
+## Ecosystem
+
+This fork is the HIP/ROCm rasterizer for the **Splatograph** streaming
+3DGS stack. See
+[bjoernellens1/splatograph/docs/ECOSYSTEM_CONTRIBUTIONS.md](https://github.com/bjoernellens1/splatograph/blob/main/docs/ECOSYSTEM_CONTRIBUTIONS.md)
+for the full dependency graph, the per-repo contributions (gfx1151
+wave32 / dpp / GLM HIP-before-CUDA / `__AMDGCN_WAVEFRONT_SIZE`
+patches), and the NVIDIA/CUDA port notes.
+
