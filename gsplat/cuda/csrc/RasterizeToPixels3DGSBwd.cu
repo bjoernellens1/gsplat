@@ -506,13 +506,7 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
     #endif
 
     #if USE_ROCM
-        __shared__ typename rocprim::warp_reduce<int32_t, WARP_SIZE>::storage_type warp_storage;
-        rocprim::warp_reduce<int32_t, WARP_SIZE> wreduce;
-        int32_t warp_bin_final;
-        wreduce.reduce( bin_final,            // 1) value held by this lane
-                warp_bin_final,               // 2) reference that will receive the result
-                warp_storage,                 // 3) shared-memory storage
-                rocprim::maximum<int32_t>()); // 4) binary operator
+    const int32_t warp_bin_final = reduce_max_shuffle(bin_final);
     #else
     const int32_t warp_bin_final =
         cg::reduce(warp, bin_final, cg::greater<int>());
