@@ -53,15 +53,23 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rasterize_to_pixels_3dgs_fwd(
 
     at::DimVector renders_dims(image_dims);
     renders_dims.append({image_height, image_width, channels});
-    // Defensive hardening (splatograph #packed-uninit): zero-init instead of
-    // at::empty. Observed from splatograph on gfx1151/ROCm: under GPU-allocator
-    // memory pressure, camera slots >=1 of this buffer can surface as
-    // dirty/NaN device memory in a packed multi-camera (C>1) call even though
-    // every projection/intersection tensor for those slots is valid and this
-    // kernel's own source writes every in-bounds pixel unconditionally --
-    // i.e. the exact mechanism was not isolated further (see splatograph's
-    // true_camera_batch.py module docstring for the bisection). One extra
-    // memset per rasterize() call; negligible next to the kernel itself.
+    // NOTE (splatograph #packed-uninit): this at::zeros (was at::empty) does
+    // NOT fix the packed multi-camera (C>1) NaN corruption on gfx1151/ROCm --
+    // verified empirically (rebuilt this wheel, reran the repro: camera
+    // slots >=1 still come back 100% NaN after allocator pressure). That
+    // rules out "uninitialized output buffer, kernel just never overwrites
+    // it" as the mechanism: the SH-evaluated `colors` input and every
+    // projection/intersection tensor (camera_ids, means2d, conics,
+    // opacities, isect_offsets, flatten_ids) were independently confirmed
+    // finite/valid going INTO this kernel for every camera slot, so
+    // rasterize_to_pixels_3dgs_fwd_kernel (RasterizeToPixels3DGSFwd.cu,
+    // this file's caller) is itself computing/writing NaN from clean
+    // inputs for image_id >= 1 in this regime -- not reading stale memory.
+    // Left as zero-init anyway since it is strictly not worse than empty
+    // and is a marginally safer default for any unrelated failure mode,
+    // but do not read this as the fix; see splatograph's
+    // true_camera_batch.py module docstring for the full bisection and
+    // why a further rocgdb/AMD-sanitizer-level trace was out of budget.
     at::Tensor renders = at::zeros(renders_dims, opt);
 
     at::DimVector alphas_dims(image_dims);
