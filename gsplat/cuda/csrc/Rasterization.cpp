@@ -53,11 +53,20 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rasterize_to_pixels_3dgs_fwd(
 
     at::DimVector renders_dims(image_dims);
     renders_dims.append({image_height, image_width, channels});
-    at::Tensor renders = at::empty(renders_dims, opt);
+    // Defensive hardening (splatograph #packed-uninit): zero-init instead of
+    // at::empty. Observed from splatograph on gfx1151/ROCm: under GPU-allocator
+    // memory pressure, camera slots >=1 of this buffer can surface as
+    // dirty/NaN device memory in a packed multi-camera (C>1) call even though
+    // every projection/intersection tensor for those slots is valid and this
+    // kernel's own source writes every in-bounds pixel unconditionally --
+    // i.e. the exact mechanism was not isolated further (see splatograph's
+    // true_camera_batch.py module docstring for the bisection). One extra
+    // memset per rasterize() call; negligible next to the kernel itself.
+    at::Tensor renders = at::zeros(renders_dims, opt);
 
     at::DimVector alphas_dims(image_dims);
     alphas_dims.append({image_height, image_width, 1});
-    at::Tensor alphas = at::empty(alphas_dims, opt);
+    at::Tensor alphas = at::zeros(alphas_dims, opt);
 
     at::DimVector last_ids_dims(image_dims);
     last_ids_dims.append({image_height, image_width});
